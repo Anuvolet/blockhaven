@@ -109,3 +109,27 @@ No ECS crate. Entities (mobs, item drops, arrows) are plain structs in typed
 ### Rendering pipeline per viewport
 sky (fullscreen triangle) → opaque chunks → entities → translucent chunks →
 block outline / crack overlay → held item → 2D HUD/UI.
+
+## Decisions made during development
+
+- **Light seams on workers.** Cross-chunk light propagation runs inside the `Mesh` job (before
+  meshing) instead of on the main thread. Light "add" BFS only ever raises values, so concurrent
+  runs from two workers converge; any sub-chunk they touch gets its version bumped and is remeshed.
+- **Torch and glowstone light is warm-tinted in the shader** (block light mixes toward orange,
+  night sky light toward blue) rather than storing colour per voxel.
+- **Mob and item textures live in the same 16×16 array texture as blocks**, so mobs, drops, the
+  first-person hand, cracks and the UI all use a single atlas and two pipelines.
+- **Menus overlay a live demo world**: the main menu renders a random world with an orbiting
+  camera behind it; starting or loading a world swaps the world/generator/pool in place.
+- **Save format only stores modified chunks**; untouched chunks regenerate from the seed. Region
+  files are rewritten atomically (temp + rename).
+- **Split-screen renders each viewport with its own encoder/submit** so the single uniform buffer
+  can be rewritten between views; the first viewport clears the attachments, the second loads them.
+- **Simplifications recorded** (see README "Known issues"): one surface height per fluid block,
+  greedy mob steering instead of A*, wheat item doubles as seeds, sticky piston = piston + string,
+  glass is smelted from sand (also craftable from ice) rather than a crafting recipe.
+- **Windows GNU toolchain**: rustup's self-contained MinGW ships `dlltool.exe` without `as.exe`,
+  which `windows-sys` (raw-dylib) needs, so a full MinGW `bin` directory must be on `PATH`. A
+  portable winlibs zip extracted into the user profile was enough; MSVC users need nothing extra.
+- **`#![allow(dead_code)]` was used during early milestones** and removed at the end; the final
+  build has zero warnings.
