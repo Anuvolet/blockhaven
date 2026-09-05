@@ -54,7 +54,9 @@ impl Biome {
     }
 }
 
+/// Climate values are kept for debugging / future biome features.
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct ColumnInfo {
     pub height: i32,
     pub biome: Biome,

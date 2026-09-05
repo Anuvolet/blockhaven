@@ -7,7 +7,7 @@ pub mod noise;
 pub mod worker;
 
 use block::{Block, BlockProps};
-use chunk::{BlockEntity, Chunk, CHUNK_HEIGHT, CHUNK_SIZE};
+use chunk::{BlockEntity, Chunk, CHUNK_HEIGHT};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -75,10 +75,6 @@ impl World {
         block::vox_block(self.get(x, y, z))
     }
 
-    pub fn props_at(&self, x: i32, y: i32, z: i32) -> &'static BlockProps {
-        block::props(block::vox_id(self.get(x, y, z)))
-    }
-
     pub fn is_loaded(&self, x: i32, z: i32) -> bool {
         self.has_chunk(chunk_coord(x), chunk_coord(z))
     }
@@ -113,16 +109,6 @@ impl World {
         match self.get_chunk(chunk_coord(x), chunk_coord(z)) {
             Some(c) => c.read().unwrap().sky(local_coord(x), y as usize, local_coord(z)),
             None => 15,
-        }
-    }
-
-    pub fn block_light(&self, x: i32, y: i32, z: i32) -> u8 {
-        if !(0..CHUNK_HEIGHT as i32).contains(&y) {
-            return 0;
-        }
-        match self.get_chunk(chunk_coord(x), chunk_coord(z)) {
-            Some(c) => c.read().unwrap().block_light(local_coord(x), y as usize, local_coord(z)),
-            None => 0,
         }
     }
 
@@ -261,4 +247,3 @@ impl<'a> ChunkCache<'a> {
 }
 
 pub const SEA_LEVEL: i32 = 62;
-pub const CHUNK_SIZE_I: i32 = CHUNK_SIZE as i32;

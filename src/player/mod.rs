@@ -70,6 +70,8 @@ pub enum OpenUi {
 
 #[derive(Clone, Debug)]
 pub struct Player {
+    /// Index in the player list (0 = keyboard/mouse, 1 = gamepad).
+    #[allow(dead_code)]
     pub id: usize,
     pub name: String,
     pub pos: Vec3,
@@ -112,7 +114,6 @@ pub struct Player {
     pub ui: OpenUi,
     pub eating: f32,
     pub fov_mult: f32,
-    pub sleeping: bool,
     pub hotbar_changed_at: f32,
     /// UI cursor in gui units (mouse for player 1, virtual for player 2).
     pub cursor: (f32, f32),
@@ -165,7 +166,6 @@ impl Player {
             ui: OpenUi::None,
             eating: 0.0,
             fov_mult: 1.0,
-            sleeping: false,
             hotbar_changed_at: -10.0,
             cursor: (0.0, 0.0),
             message: None,
@@ -492,10 +492,6 @@ impl Player {
 
     pub fn say(&mut self, text: &str) {
         self.message = Some((text.to_string(), 3.0));
-    }
-
-    pub fn heal(&mut self, amount: f32) {
-        self.health = (self.health + amount).min(20.0);
     }
 
     pub fn eat(&mut self, hunger: u8, saturation: f32) {

@@ -202,10 +202,6 @@ impl Rng {
     pub fn f32(&mut self) -> f32 {
         (self.next_u32() >> 8) as f32 / 16777216.0
     }
-    #[inline]
-    pub fn f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / 9007199254740992.0
-    }
     /// Uniform integer in [0, n).
     #[inline]
     pub fn below(&mut self, n: u32) -> u32 {

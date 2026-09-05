@@ -11,6 +11,7 @@ macro_rules! blocks {
         #[repr(u8)]
         pub enum Block { $($name = $id),* }
         impl Block {
+            #[allow(dead_code)]
             pub const ALL: &'static [Block] = &[$(Block::$name),*];
             pub fn from_id(id: u8) -> Block {
                 match id { $($id => Block::$name,)* _ => Block::Air }
@@ -304,11 +305,6 @@ pub fn props(id: u8) -> &'static BlockProps {
     &PROPS.get_or_init(build_props)[id as usize]
 }
 
-#[inline]
-pub fn props_of(b: Block) -> &'static BlockProps {
-    props(b.id())
-}
-
 /// Packed voxel helpers.
 #[inline]
 pub const fn voxel(b: Block, meta: u8) -> u16 {
@@ -328,18 +324,6 @@ pub const fn vox_meta(v: u16) -> u8 {
 }
 
 #[inline]
-pub fn is_opaque(v: u16) -> bool {
-    props(vox_id(v)).opaque
-}
-#[inline]
-pub fn is_solid(v: u16) -> bool {
-    props(vox_id(v)).solid
-}
-#[inline]
-pub fn is_air(v: u16) -> bool {
-    vox_id(v) == 0
-}
-#[inline]
 pub fn is_fluid(v: u16) -> bool {
     let id = vox_id(v);
     id == Block::Water.id() || id == Block::Lava.id()
@@ -347,14 +331,6 @@ pub fn is_fluid(v: u16) -> bool {
 #[inline]
 pub fn is_water(v: u16) -> bool {
     vox_id(v) == Block::Water.id()
-}
-#[inline]
-pub fn is_leaves(b: Block) -> bool {
-    matches!(b, Block::OakLeaves | Block::BirchLeaves | Block::SpruceLeaves)
-}
-#[inline]
-pub fn is_log(b: Block) -> bool {
-    matches!(b, Block::OakLog | Block::BirchLog | Block::SpruceLog)
 }
 
 /// Faces: 0 = -X, 1 = +X, 2 = -Y, 3 = +Y, 4 = -Z, 5 = +Z.

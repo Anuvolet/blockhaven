@@ -8,7 +8,6 @@ use std::sync::OnceLock;
 pub enum Ingredient {
     Id(u16),
     Planks,
-    Log,
     Cobble,
     Wool,
 }
@@ -21,19 +20,8 @@ impl Ingredient {
         match self {
             Ingredient::Id(id) => s.id == *id,
             Ingredient::Planks => matches!(s.as_block(), Some(Block::OakPlanks | Block::BirchPlanks | Block::SprucePlanks)),
-            Ingredient::Log => matches!(s.as_block(), Some(Block::OakLog | Block::BirchLog | Block::SpruceLog)),
             Ingredient::Cobble => matches!(s.as_block(), Some(Block::Cobblestone | Block::MossyCobblestone)),
             Ingredient::Wool => s.as_block() == Some(Block::Wool),
-        }
-    }
-    /// Representative item for displaying the recipe.
-    pub fn example(&self) -> ItemStack {
-        match self {
-            Ingredient::Id(id) => ItemStack::new(*id, 1),
-            Ingredient::Planks => ItemStack::block(Block::OakPlanks, 1),
-            Ingredient::Log => ItemStack::block(Block::OakLog, 1),
-            Ingredient::Cobble => ItemStack::block(Block::Cobblestone, 1),
-            Ingredient::Wool => ItemStack::block(Block::Wool, 1),
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::render::camera::Camera;
 use crate::render::chunk_renderer::{ChunkRenderer, DynamicBuffer};
 use crate::render::gpu::{Gpu, DEPTH_FORMAT};
 use crate::render::mesher::{pack, ChunkVertex};
-use crate::world::block::{self, face_tiles, Block, Shape};
+use crate::world::block::{self, face_tiles, Shape};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
@@ -267,9 +267,4 @@ pub fn drop_quads(pos: Vec3, stack: &ItemStack, age: f32, light: (u8, u8), out: 
             sprite(center + Vec3::new(0.0, 0.05, 0.0), r, Vec3::Y, 0.3, tile, light, out);
         }
     }
-}
-
-/// True if this stack is rendered as a cube in hand/drops.
-pub fn is_cube_item(b: Block) -> bool {
-    matches!(block::props(b.id()).shape, Shape::Cube | Shape::Cactus | Shape::Farmland)
 }

@@ -54,13 +54,6 @@ impl Canvas {
             }
         }
     }
-    pub fn multiply(&mut self, f: f32) {
-        for p in self.px.iter_mut() {
-            for c in p.iter_mut().take(3) {
-                *c = (*c as f32 * f).clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
     pub fn stamp(&mut self, rows: &[&str], pal: &[(char, Rgba)], ox: i32, oy: i32) {
         for (y, row) in rows.iter().enumerate() {
             for (x, ch) in row.chars().enumerate() {

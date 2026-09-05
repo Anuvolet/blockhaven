@@ -220,10 +220,4 @@ impl Chunk {
             }
         }
     }
-    /// Bump all sub-chunk versions (forces remesh).
-    pub fn touch_all(&mut self) {
-        for s in self.subs.iter_mut() {
-            s.version = s.version.wrapping_add(1);
-        }
-    }
 }

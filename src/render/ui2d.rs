@@ -25,13 +25,12 @@ pub struct UiBatch {
     pub verts: Vec<UiVertex>,
     pub width: f32,
     pub height: f32,
-    pub scale: f32,
 }
 
 impl UiBatch {
     /// `w`/`h` in physical pixels; `scale` = gui pixels per unit.
     pub fn new(w: f32, h: f32, scale: f32) -> UiBatch {
-        UiBatch { verts: Vec::new(), width: w / scale, height: h / scale, scale }
+        UiBatch { verts: Vec::new(), width: w / scale, height: h / scale }
     }
 
     #[inline]
@@ -93,10 +92,6 @@ impl UiBatch {
 
     pub fn tile(&mut self, x: f32, y: f32, w: f32, h: f32, tile: Tile, color: [f32; 4]) {
         self.quad(x, y, w, h, [0.0, 0.0, 1.0, 1.0], color, MODE_ATLAS | ((tile.index() as u32) << 8));
-    }
-
-    pub fn tile_id(&mut self, x: f32, y: f32, w: f32, h: f32, tile: u16, color: [f32; 4]) {
-        self.quad(x, y, w, h, [0.0, 0.0, 1.0, 1.0], color, MODE_ATLAS | ((tile as u32) << 8));
     }
 
     /// Part of a tile (u/v in 0..1).

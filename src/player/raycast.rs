@@ -9,7 +9,6 @@ use glam::Vec3;
 pub struct RayHit {
     pub pos: (i32, i32, i32),
     pub normal: (i32, i32, i32),
-    pub point: Vec3,
     pub dist: f32,
 }
 
@@ -79,13 +78,13 @@ pub fn raycast(cache: &mut ChunkCache, origin: Vec3, dir: Vec3, max_dist: f32, h
                 if p.solid {
                     if let Some(b) = block_aabb(v, x, y, z) {
                         if let Some((th, n)) = ray_aabb(origin, dir, &b, max_dist) {
-                            return Some(RayHit { pos: (x, y, z), normal: n, point: origin + dir * th, dist: th });
+                            return Some(RayHit { pos: (x, y, z), normal: n, dist: th });
                         }
                     }
                 } else {
                     // non-solid decoration: hit the full cell
                     let n = if t == 0.0 { (0, 1, 0) } else { normal };
-                    return Some(RayHit { pos: (x, y, z), normal: n, point: origin + dir * t, dist: t });
+                    return Some(RayHit { pos: (x, y, z), normal: n, dist: t });
                 }
             }
         }
@@ -133,7 +132,7 @@ mod tests {
         let hit = raycast(&mut cache, Vec3::new(8.5, 10.0, 8.5), Vec3::new(0.3, -1.0, 0.1), 20.0, false).unwrap();
         assert_eq!(hit.pos.1, 5);
         assert_eq!(hit.normal, (0, 1, 0));
-        assert!((hit.point.y - 6.0).abs() < 1e-4);
+        assert!((hit.dist - 4.0).abs() < 0.5);
         assert!(raycast(&mut cache, Vec3::new(8.5, 10.0, 8.5), Vec3::new(0.0, 1.0, 0.0), 20.0, false).is_none());
     }
 }

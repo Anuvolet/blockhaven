@@ -1,9 +1,8 @@
 //! Player inventory: 9 hotbar + 27 main slots, 4 armour slots, crafting grid, cursor stack.
 
-use crate::player::items::{ArmorSlot, ItemKind, ItemStack};
+use crate::player::items::{ItemKind, ItemStack};
 use serde::{Deserialize, Serialize};
 
-pub const HOTBAR: usize = 9;
 pub const MAIN: usize = 36;
 pub const ARMOR: usize = 4;
 
@@ -31,9 +30,6 @@ impl Inventory {
 
     pub fn held(&self) -> ItemStack {
         self.slots[self.selected]
-    }
-    pub fn held_mut(&mut self) -> &mut ItemStack {
-        &mut self.slots[self.selected]
     }
 
     /// Add a stack, merging into existing stacks first. Returns what did not fit.
@@ -150,10 +146,6 @@ impl Inventory {
         }
     }
 
-    pub fn armor_slot_index(slot: ArmorSlot) -> usize {
-        slot as usize
-    }
-
     /// Take everything out (death).
     pub fn drain_all(&mut self) -> Vec<ItemStack> {
         let mut out = Vec::new();
@@ -170,9 +162,6 @@ impl Inventory {
         out
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.slots.iter().all(|s| s.is_empty()) && self.armor.iter().all(|s| s.is_empty())
-    }
 }
 
 #[cfg(test)]

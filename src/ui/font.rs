@@ -1,7 +1,5 @@
 //! Procedural 5x7 bitmap font for ASCII 32..126, packed into a 128x48 texture (16x6 cells of 8x8).
 
-pub const GLYPH_W: u32 = 5;
-pub const GLYPH_H: u32 = 7;
 pub const CELL: u32 = 8;
 pub const COLS: u32 = 16;
 pub const ROWS: u32 = 6;

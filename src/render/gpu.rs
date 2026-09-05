@@ -99,9 +99,6 @@ impl Gpu {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn aspect(&self) -> f32 {
-        self.config.width as f32 / self.config.height.max(1) as f32
-    }
 }
 
 fn create_depth(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> wgpu::TextureView {

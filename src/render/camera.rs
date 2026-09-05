@@ -23,10 +23,6 @@ impl Camera {
         let (sp, cp) = self.pitch.sin_cos();
         Vec3::new(-sy * cp, sp, -cy * cp)
     }
-    pub fn forward_flat(&self) -> Vec3 {
-        let (sy, cy) = self.yaw.sin_cos();
-        Vec3::new(-sy, 0.0, -cy)
-    }
     pub fn right(&self) -> Vec3 {
         let (sy, cy) = self.yaw.sin_cos();
         Vec3::new(cy, 0.0, -sy)
@@ -39,10 +35,6 @@ impl Camera {
     }
     pub fn view_proj(&self) -> Mat4 {
         self.proj() * self.view()
-    }
-    pub fn clamp_pitch(&mut self) {
-        let lim = 89.5f32.to_radians();
-        self.pitch = self.pitch.clamp(-lim, lim);
     }
 }
 

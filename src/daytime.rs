@@ -64,9 +64,6 @@ impl DayCycle {
         h = lerp3(h, dusk_h, dusk_t * 0.85);
         (z, h)
     }
-    pub fn fog_color(&self) -> [f32; 3] {
-        self.sky_colors().1
-    }
     /// Time formatted as HH:MM for the debug overlay (06:00 = sunrise).
     pub fn clock(&self) -> String {
         let t = (self.time_of_day() + 0.25).rem_euclid(1.0); // shift so 0 = 06:00

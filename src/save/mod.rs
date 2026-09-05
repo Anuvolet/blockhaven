@@ -197,11 +197,6 @@ impl SaveManager {
         self.regions.get_mut(&(rx, rz)).unwrap()
     }
 
-    pub fn has_chunk(&mut self, cx: i32, cz: i32) -> bool {
-        let ((rx, rz), idx) = Self::region_key(cx, cz);
-        self.region_mut(rx, rz).get(idx).is_some()
-    }
-
     pub fn load_chunk(&mut self, cx: i32, cz: i32) -> Option<Chunk> {
         let ((rx, rz), idx) = Self::region_key(cx, cz);
         let bytes = self.region_mut(rx, rz).get(idx)?.to_vec();
@@ -279,8 +274,7 @@ mod tests {
         sm.store_chunk(&c);
         sm.flush().unwrap();
         let mut sm2 = SaveManager { dir: dir.clone(), regions: HashMap::new(), dirty: HashSet::new(), chunks_written: 0 };
-        assert!(sm2.has_chunk(-1, 40));
-        assert!(!sm2.has_chunk(0, 40));
+        assert!(sm2.load_chunk(0, 40).is_none());
         let d = sm2.load_chunk(-1, 40).unwrap();
         assert_eq!(d.get_block(0, 10, 0), Block::GoldBlock);
         let _ = std::fs::remove_dir_all(dir);

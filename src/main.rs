@@ -1,5 +1,4 @@
 // A few helpers are only used by later features or debug flags.
-#![allow(dead_code)]
 
 mod app;
 mod audio;

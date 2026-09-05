@@ -13,6 +13,7 @@ macro_rules! items {
         #[repr(u16)]
         pub enum Item { $($name = $id),* }
         impl Item {
+            #[allow(dead_code)]
             pub const ALL: &'static [Item] = &[$(Item::$name),*];
             pub fn from_id(id: u16) -> Option<Item> {
                 match id { $($id => Some(Item::$name),)* _ => None }

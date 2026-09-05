@@ -102,10 +102,6 @@ impl Input {
     pub fn just(&self, k: KeyCode) -> bool {
         self.just_pressed.contains(&k)
     }
-    #[inline]
-    pub fn released(&self, k: KeyCode) -> bool {
-        self.just_released.contains(&k)
-    }
 
     /// Clear per-frame state. Call at the end of each frame.
     pub fn end_frame(&mut self) {

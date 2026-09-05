@@ -25,10 +25,6 @@ pub enum MobKind {
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 7] = [MobKind::Pig, MobKind::Cow, MobKind::Sheep, MobKind::Chicken, MobKind::Zombie, MobKind::Skeleton, MobKind::Creeper];
-    pub fn from_id(id: u8) -> MobKind {
-        MobKind::ALL[(id as usize) % 7]
-    }
     pub fn hostile(self) -> bool {
         matches!(self, MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper)
     }
@@ -64,17 +60,6 @@ impl MobKind {
             MobKind::Zombie => 2.6,
             MobKind::Skeleton => 2.6,
             MobKind::Creeper => 2.5,
-        }
-    }
-    pub fn name(self) -> &'static str {
-        match self {
-            MobKind::Pig => "Pig",
-            MobKind::Cow => "Cow",
-            MobKind::Sheep => "Sheep",
-            MobKind::Chicken => "Chicken",
-            MobKind::Zombie => "Zombie",
-            MobKind::Skeleton => "Skeleton",
-            MobKind::Creeper => "Creeper",
         }
     }
     pub fn burns_in_daylight(self) -> bool {
@@ -178,10 +163,6 @@ impl Mob {
     }
     pub fn eye(&self) -> Vec3 {
         self.position() + Vec3::new(0.0, self.kind.size().1 * 0.85, 0.0)
-    }
-    pub fn forward(&self) -> Vec3 {
-        let (s, c) = self.yaw.sin_cos();
-        Vec3::new(-s, 0.0, -c)
     }
 
     /// Apply damage with optional knockback from a source position. Returns true if the mob died.

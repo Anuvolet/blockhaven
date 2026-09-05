@@ -64,11 +64,4 @@ impl Region {
         self.chunks.insert(idx, data);
     }
 
-    pub fn len(&self) -> usize {
-        self.chunks.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
-    }
 }
