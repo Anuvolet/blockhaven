@@ -9,8 +9,8 @@ release build with zero warnings, a smoke run, and a commit.
 - [x] 3. Terrain generation (noise, biomes, caves, ores, trees, fluids)
 - [x] 4. Player physics, block break/place, procedural textures
 - [x] 5. Lighting (sun + block light, AO) + day/night cycle
-- [ ] 6. Inventory, items, crafting, furnace, chests, item drops
-- [ ] 7. Health / hunger / damage / respawn
+- [x] 6. Inventory, items, crafting, furnace, chests, item drops
+- [x] 7. Health / hunger / damage / respawn
 - [ ] 8. Mobs (pig, cow, sheep, chicken, zombie, skeleton, creeper)
 - [ ] 9. Redstone (dust, torch, lever, button, plate, lamp, pistons, doors, TNT)
 - [ ] 10. Structures (villages, dungeons, ruins)

@@ -4,8 +4,9 @@ use crate::render::mesher::{self, MeshData};
 use crate::world::chunk::Chunk;
 use crate::world::gen::Generator;
 use crate::world::World;
+use crate::save::SaveManager;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 pub enum Job {
@@ -27,7 +28,7 @@ pub struct WorkerPool {
 }
 
 impl WorkerPool {
-    pub fn new(world: Arc<World>, generator: Arc<Generator>, threads: usize) -> WorkerPool {
+    pub fn new(world: Arc<World>, generator: Arc<Generator>, save: Option<Arc<Mutex<SaveManager>>>, threads: usize) -> WorkerPool {
         let (tx, job_rx) = unbounded::<Job>();
         let (res_tx, rx) = unbounded::<JobResult>();
         let mut handles = Vec::new();
@@ -36,11 +37,12 @@ impl WorkerPool {
             let res_tx = res_tx.clone();
             let world = world.clone();
             let generator = generator.clone();
+            let save = save.clone();
             handles.push(
                 thread::Builder::new()
                     .name(format!("worker-{i}"))
                     .stack_size(8 << 20)
-                    .spawn(move || worker_main(job_rx, res_tx, world, generator))
+                    .spawn(move || worker_main(job_rx, res_tx, world, generator, save))
                     .expect("spawn worker"),
             );
         }
@@ -77,13 +79,20 @@ impl Drop for WorkerPool {
     }
 }
 
-fn worker_main(rx: Receiver<Job>, tx: Sender<JobResult>, world: Arc<World>, generator: Arc<Generator>) {
+fn worker_main(rx: Receiver<Job>, tx: Sender<JobResult>, world: Arc<World>, generator: Arc<Generator>, save: Option<Arc<Mutex<SaveManager>>>) {
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
             Job::Generate { cx, cz } => {
-                let mut chunk = generator.generate(cx, cz);
-                crate::world::light::init_chunk_light(&mut chunk);
+                let saved = save.as_ref().and_then(|s| s.lock().ok().and_then(|mut s| s.load_chunk(cx, cz)));
+                let chunk = match saved {
+                    Some(c) => c,
+                    None => {
+                        let mut chunk = generator.generate(cx, cz);
+                        crate::world::light::init_chunk_light(&mut chunk);
+                        chunk
+                    }
+                };
                 if tx.send(JobResult::Generated { chunk }).is_err() {
                     break;
                 }

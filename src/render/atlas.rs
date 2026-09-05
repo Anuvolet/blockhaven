@@ -55,7 +55,7 @@ tiles! {
     // --- effects & ui ---
     Crack0, Crack1, Crack2, Crack3, Crack4, Crack5, Crack6, Crack7, Crack8, Crack9,
     HeartFull, HeartHalf, HeartEmpty, FoodFull, FoodHalf, FoodEmpty, ArmorFull, ArmorHalf,
-    ArmorEmpty, Slot, SlotSelected, Sun, Moon, Bubble, White, Crosshair, ArrowUp, Checkmark,
+    ArmorEmpty, Slot, SlotSelected, Sun, Moon, Bubble, White, Crosshair, ArrowUp, ArrowRight, Checkmark,
 }
 
 pub struct AtlasData {

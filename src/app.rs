@@ -11,6 +11,9 @@ use crate::render::chunk_renderer::{ChunkRenderer, DynamicBuffer, Globals};
 use crate::render::gpu::Gpu;
 use crate::render::overlay::{self, OverlayRenderer};
 use crate::render::sky::SkyRenderer;
+use crate::render::ui2d::{UiBatch, UiRenderer};
+use crate::ui::screens::{self, ScreenInput};
+use crate::world::chunk::BlockEntity;
 use crate::settings::Settings;
 use crate::world::fluid::FluidSim;
 use crate::world::gen::Generator;
@@ -30,6 +33,7 @@ pub struct App {
     pub chunk_renderer: ChunkRenderer,
     pub sky: SkyRenderer,
     pub overlay: OverlayRenderer,
+    pub ui: UiRenderer,
     pub entity_buf: DynamicBuffer,
     pub world: Arc<World>,
     pub generator: Arc<Generator>,
@@ -57,6 +61,12 @@ pub struct App {
     pub stats: String,
     threads: usize,
     pub interactions: Vec<Interaction>,
+    pub show_debug: bool,
+    pub furnaces: HashSet<(i32, i32, i32)>,
+    pub save: Option<Arc<std::sync::Mutex<crate::save::SaveManager>>>,
+    pub world_name: String,
+    pub flat: bool,
+    pub autosave_timer: f32,
 }
 
 /// Find a land spawn near the origin.
@@ -82,11 +92,13 @@ impl App {
         let chunk_renderer = ChunkRenderer::new(&gpu, &atlas_gpu);
         let sky = SkyRenderer::new(&gpu);
         let overlay = OverlayRenderer::new(&gpu, &chunk_renderer);
+        let font_view = crate::ui::font::upload(&gpu.device, &gpu.queue);
+        let ui = UiRenderer::new(&gpu, &atlas_gpu, &font_view);
         let entity_buf = DynamicBuffer::new(&gpu.device, 4096);
         let world = World::new(seed);
         let generator = Arc::new(Generator::new(seed));
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(1).max(2);
-        let pool = WorkerPool::new(world.clone(), generator.clone(), threads);
+        let pool = WorkerPool::new(world.clone(), generator.clone(), None, threads);
         let spawn = find_spawn(&generator);
         let mut p1 = Player::new(0, "Player 1", spawn, mode);
         p1.spawn = spawn;
@@ -95,6 +107,7 @@ impl App {
             chunk_renderer,
             sky,
             overlay,
+            ui,
             entity_buf,
             world,
             generator,
@@ -122,7 +135,22 @@ impl App {
             stats: String::new(),
             threads,
             interactions: Vec::new(),
+            show_debug: false,
+            furnaces: HashSet::new(),
+            save: None,
+            world_name: String::new(),
+            flat: false,
+            autosave_timer: 0.0,
         }
+    }
+
+    /// Should the mouse be captured for looking around?
+    pub fn wants_grab(&self) -> bool {
+        self.players[0].ui == OpenUi::None
+    }
+
+    pub fn gui_scale(&self) -> f32 {
+        crate::ui::gui_scale(self.gpu.config.height)
     }
 
     pub fn resize(&mut self, w: u32, h: u32) {
@@ -182,8 +210,46 @@ impl App {
             self.settings.render_distance = (self.settings.render_distance - 1).max(2);
         }
 
+        if self.input.just(KeyCode::F3) {
+            self.show_debug = !self.show_debug;
+        }
+        // --- container screens (player 1: mouse) ---
+        {
+            let ui_open = self.players[0].ui != OpenUi::None && self.players[0].ui != OpenUi::Dead;
+            if ui_open {
+                if self.input.just(KeyCode::Escape) || self.input.just(KeyCode::KeyE) {
+                    screens::close(&mut self.players[0], &mut self.drops);
+                } else {
+                    let scale = self.gui_scale();
+                    let batch = UiBatch::new(self.gpu.config.width as f32, self.gpu.config.height as f32, scale);
+                    let sin = ScreenInput {
+                        mx: self.input.cursor.0 / scale,
+                        my: self.input.cursor.1 / scale,
+                        left: self.input.mouse_just_pressed[0],
+                        right: self.input.mouse_just_pressed[1],
+                        shift: self.input.pressed(KeyCode::ShiftLeft),
+                    };
+                    screens::update(&self.world, &mut self.players[0], &sin, &batch, &mut self.drops);
+                }
+            }
+        }
         // --- players ---
-        let inputs: Vec<PlayerInput> = (0..self.players.len()).map(|i| if i == 0 { self.keyboard_input() } else { PlayerInput::default() }).collect();
+        let inputs: Vec<PlayerInput> = (0..self.players.len())
+            .map(|i| {
+                let mut pi = if i == 0 { self.keyboard_input() } else { PlayerInput::default() };
+                if self.players[i].ui != OpenUi::None {
+                    let dead = self.players[i].dead;
+                    let jump = pi.jump_pressed;
+                    let use_p = pi.use_pressed;
+                    pi = PlayerInput::default();
+                    if dead {
+                        pi.jump_pressed = jump;
+                        pi.use_pressed = use_p;
+                    }
+                }
+                pi
+            })
+            .collect();
         let sens = self.settings.look_scale();
         let mut interactions = Vec::new();
         for i in 0..self.players.len() {
@@ -220,7 +286,15 @@ impl App {
             let acts = interact::update(&mut ctx, &mut self.players[i], &pin, dt);
             for a in &acts {
                 match a {
-                    Interaction::OpenUi(ui) => self.players[i].ui = *ui,
+                    Interaction::OpenUi(ui) => {
+                        self.players[i].ui = *ui;
+                        if let OpenUi::Furnace(p) = ui {
+                            self.furnaces.insert(*p);
+                        }
+                    }
+                    Interaction::Placed { pos, block: crate::world::block::Block::Furnace } => {
+                        self.furnaces.insert(*pos);
+                    }
                     Interaction::Sleep { .. } => {
                         let pos = self.players[i].pos;
                         self.players[i].bed_spawn = Some(pos);
@@ -239,9 +313,8 @@ impl App {
                 }
             }
             interactions.extend(acts);
-            if pin.inventory {
-                let p = &mut self.players[i];
-                p.ui = if p.ui == OpenUi::None { OpenUi::Inventory } else { OpenUi::None };
+            if pin.inventory && self.players[i].ui == OpenUi::None {
+                self.players[i].ui = OpenUi::Inventory;
             }
         }
         self.interactions = interactions;
@@ -304,6 +377,44 @@ impl App {
         self.fluids.step(&self.world);
         if self.ticks % 4 == 0 {
             self.random_ticks();
+        }
+        self.tick_furnaces();
+    }
+
+    /// Advance every active furnace and keep its block's lit state in sync.
+    fn tick_furnaces(&mut self) {
+        let mut done = Vec::new();
+        let list: Vec<(i32, i32, i32)> = self.furnaces.iter().copied().collect();
+        for p in list {
+            let v = self.world.get(p.0, p.1, p.2);
+            let b = crate::world::block::vox_block(v);
+            if !matches!(b, crate::world::block::Block::Furnace | crate::world::block::Block::FurnaceLit) {
+                done.push(p);
+                continue;
+            }
+            let mut lit = false;
+            let mut idle = false;
+            let r = self.world.with_block_entity(p.0, p.1, p.2, |be| {
+                if let BlockEntity::Furnace(f) = be {
+                    lit = f.tick();
+                    idle = f.burn_left == 0 && f.progress == 0 && f.input.map(|s| crate::player::furnace::smelt_result(s.id).is_none()).unwrap_or(true);
+                }
+            });
+            if r.is_none() {
+                done.push(p);
+                continue;
+            }
+            let want = if lit { crate::world::block::Block::FurnaceLit } else { crate::world::block::Block::Furnace };
+            if b != want {
+                self.world.set_block(p.0, p.1, p.2, crate::world::block::voxel(want, crate::world::block::vox_meta(v)));
+            }
+            let open = self.players.iter().any(|pl| pl.ui == OpenUi::Furnace(p));
+            if idle && !open {
+                done.push(p);
+            }
+        }
+        for p in done {
+            self.furnaces.remove(&p);
         }
     }
 
@@ -502,6 +613,31 @@ impl App {
         }
     }
 
+    /// Lines for the F3 overlay.
+    pub fn debug_lines(&self) -> Vec<String> {
+        let p = &self.players[0];
+        let (bx, by, bz) = (p.pos.x.floor() as i32, p.pos.y.floor() as i32, p.pos.z.floor() as i32);
+        let biome = crate::world::gen::Biome::from_id(self.world.biome_at(bx, bz)).name();
+        let (sky, blk) = self.world.light_at(bx, by, bz);
+        let facing = match crate::world::block::facing_from_yaw(p.yaw) {
+            0 => "north (-Z)",
+            1 => "east (+X)",
+            2 => "south (+Z)",
+            _ => "west (-X)",
+        };
+        vec![
+            format!("Blockhaven 0.1 | {:.0} fps | {} ({})", self.fps, self.gpu.adapter_name, self.gpu.backend),
+            format!("XYZ: {:.2} / {:.2} / {:.2}  block {} {} {}", p.pos.x, p.pos.y, p.pos.z, bx, by, bz),
+            format!("Chunk: {} {}  facing {}  yaw {:.1} pitch {:.1}", bx >> 4, bz >> 4, facing, p.yaw.to_degrees(), p.pitch.to_degrees()),
+            format!("Biome: {}  light sky {} block {}", biome, sky, blk),
+            format!("Chunks: {} loaded, {} sub-meshes drawn, {} quads", self.world.chunk_count(), self.chunk_renderer.stats_drawn, self.chunk_renderer.stats_quads),
+            format!("Pending: gen {} mesh {}  workers {}  drops {}  arrows {}", self.pending_gen.len(), self.pending_mesh.len(), self.threads, self.drops.len(), self.arrows.len()),
+            format!("Time: {} day {}  sun {:.2}  tick {}  fluids {}", self.daytime.clock(), self.daytime.day_number(), self.daytime.sun_level(), self.ticks, self.fluids.pending()),
+            format!("Health {:.1} hunger {:.1} sat {:.1}  mode {:?}{}", p.health, p.hunger, p.saturation, p.mode, if p.flying { " flying" } else { "" }),
+            format!("Render distance {}  fov {:.0}  seed {}", self.settings.render_distance, self.settings.fov, self.world.seed),
+        ]
+    }
+
     pub fn is_idle(&self) -> bool {
         self.pending_gen.is_empty() && self.pending_mesh.is_empty() && self.pool.in_flight == 0
     }
@@ -650,6 +786,26 @@ impl App {
         }
         self.chunk_renderer.stats_drawn = stats.0;
         self.chunk_renderer.stats_quads = stats.1;
+        // ---- HUD / screens ----
+        let scale = self.gui_scale();
+        let mut hud = UiBatch::new(self.gpu.config.width as f32, self.gpu.config.height as f32, scale);
+        let debug_lines = if self.show_debug { Some(self.debug_lines()) } else { None };
+        let p = &self.players[0];
+        crate::ui::hud::draw_hud(&mut hud, p, debug_lines.as_deref(), true);
+        if p.ui != OpenUi::None && p.ui != OpenUi::Dead {
+            screens::draw(&mut hud, &self.world, p, self.input.cursor.0 / scale, self.input.cursor.1 / scale);
+        }
+        self.ui.prepare(&self.gpu, &[&hud]);
+        {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("ui"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            self.ui.draw(&mut pass, &self.chunk_renderer, 0);
+        }
         self.gpu.queue.submit(Some(enc.finish()));
 
         let p = &self.players[0];

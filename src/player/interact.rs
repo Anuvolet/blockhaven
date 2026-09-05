@@ -346,10 +346,12 @@ pub fn update(ctx: &mut Ctx, player: &mut Player, input: &PlayerInput, dt: f32) 
     // hotbar
     if let Some(h) = input.hotbar {
         player.inventory.selected = h.min(8);
+        player.hotbar_changed_at = player.time;
     }
     if input.scroll != 0 {
         let n = 9i32;
         player.inventory.selected = ((player.inventory.selected as i32 - input.scroll).rem_euclid(n)) as usize;
+        player.hotbar_changed_at = player.time;
     }
     // drop
     if input.drop {

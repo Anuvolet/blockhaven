@@ -113,6 +113,7 @@ pub struct Player {
     pub eating: f32,
     pub fov_mult: f32,
     pub sleeping: bool,
+    pub hotbar_changed_at: f32,
 }
 
 impl Player {
@@ -161,6 +162,7 @@ impl Player {
             eating: 0.0,
             fov_mult: 1.0,
             sleeping: false,
+            hotbar_changed_at: -10.0,
         }
     }
 

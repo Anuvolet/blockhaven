@@ -7,7 +7,9 @@ mod entity;
 mod input;
 mod player;
 mod render;
+mod save;
 mod settings;
+mod ui;
 mod world;
 
 use std::sync::Arc;
@@ -48,6 +50,19 @@ fn main() {
     }
     if let Some(id) = arg("--give").and_then(|s| s.parse::<u16>().ok()) {
         app.players[0].inventory.slots[0] = player::items::ItemStack::new(id, 32);
+        app.players[0].inventory.slots[1] = player::items::ItemStack::item(player::items::Item::IronPickaxe, 1);
+        app.players[0].inventory.slots[2] = player::items::ItemStack::item(player::items::Item::Bread, 7);
+        app.players[0].inventory.slots[12] = player::items::ItemStack::block(world::block::Block::OakLog, 20);
+        app.players[0].inventory.craft[0] = player::items::ItemStack::block(world::block::Block::OakPlanks, 2);
+        app.players[0].inventory.craft[3] = player::items::ItemStack::block(world::block::Block::OakPlanks, 2);
+    }
+    if args.iter().any(|a| a == "--debug") {
+        app.show_debug = true;
+    }
+    match arg("--open").as_deref() {
+        Some("inventory") => app.players[0].ui = player::OpenUi::Inventory,
+        Some("crafting") => app.players[0].ui = player::OpenUi::CraftingTable,
+        _ => {}
     }
     if let Some(p) = arg("--look") {
         let v: Vec<f32> = p.split(',').filter_map(|s| s.trim().parse().ok()).collect();
@@ -141,7 +156,7 @@ fn main() {
                     WindowEvent::CloseRequested => elwt.exit(),
                     WindowEvent::Resized(size) => app.resize(size.width, size.height),
                     WindowEvent::MouseInput { state: winit::event::ElementState::Pressed, .. } => {
-                        if !app.cursor_grabbed {
+                        if !app.cursor_grabbed && app.wants_grab() {
                             app.cursor_grabbed = true;
                             set_grab(&window, true);
                         }
@@ -156,6 +171,10 @@ fn main() {
                             set_grab(&window, false);
                         }
                         app.update();
+                        if app.cursor_grabbed && !app.wants_grab() {
+                            app.cursor_grabbed = false;
+                            set_grab(&window, false);
+                        }
                         app.render();
                         frame_count += 1;
                         if let Some(path) = &screenshot {
