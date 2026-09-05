@@ -246,7 +246,8 @@ impl Generator {
                     let a = self.worm_a.get3(wx / 95.0, fy / 60.0, wz / 95.0);
                     let b = self.worm_b.get3(wx / 95.0 + 31.0, fy / 60.0, wz / 95.0 + 17.0);
                     let worm = a * a + b * b < 0.0032;
-                    let cheese = if !worm { self.cheese.fbm3(wx / 70.0, fy / 45.0, wz / 70.0, 3, 2.0, 0.5) > 0.44 } else { false };
+                    // big cheese caves stay well below the surface; worms may break through
+                    let cheese = if !worm && y < h - 12 { self.cheese.fbm3(wx / 70.0, fy / 45.0, wz / 70.0, 3, 2.0, 0.5) > 0.44 } else { false };
                     if worm || cheese {
                         let cur = chunk.get(lx, y as usize, lz);
                         if cur == 0 || crate::world::block::vox_block(cur) == Block::Bedrock || crate::world::block::is_water(cur) {

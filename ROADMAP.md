@@ -7,8 +7,8 @@ release build with zero warnings, a smoke run, and a commit.
 - [x] 1. Window, input, camera, flat test world rendered
 - [x] 2. Chunk system + meshing + threading + frustum culling
 - [x] 3. Terrain generation (noise, biomes, caves, ores, trees, fluids)
-- [ ] 4. Player physics, block break/place, procedural textures
-- [ ] 5. Lighting (sun + block light, AO) + day/night cycle
+- [x] 4. Player physics, block break/place, procedural textures
+- [x] 5. Lighting (sun + block light, AO) + day/night cycle
 - [ ] 6. Inventory, items, crafting, furnace, chests, item drops
 - [ ] 7. Health / hunger / damage / respawn
 - [ ] 8. Mobs (pig, cow, sheep, chicken, zombie, skeleton, creeper)

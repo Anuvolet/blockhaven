@@ -3,6 +3,7 @@ pub mod camera;
 pub mod chunk_renderer;
 pub mod gpu;
 pub mod mesher;
+pub mod overlay;
 pub mod screenshot;
 pub mod sky;
 pub mod texgen;

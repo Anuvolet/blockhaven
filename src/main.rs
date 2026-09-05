@@ -3,9 +3,11 @@
 
 mod app;
 mod daytime;
+mod entity;
 mod input;
 mod player;
 mod render;
+mod settings;
 mod world;
 
 use std::sync::Arc;
@@ -30,25 +32,32 @@ fn main() {
     let seed = arg("--seed").map(|s| world::noise::seed_from_str(&s)).unwrap_or(1337);
     let screenshot = arg("--screenshot");
     let max_frames: u64 = arg("--frames").and_then(|s| s.parse().ok()).unwrap_or(600);
-    let mut app = app::App::new(gpu, seed);
+    let mut settings = settings::Settings::load();
+    let mode = if args.iter().any(|a| a == "--creative") { player::GameMode::Creative } else { player::GameMode::Survival };
+    if let Some(rd) = arg("--rd").and_then(|s| s.parse::<i32>().ok()) {
+        settings.render_distance = rd.clamp(2, 32);
+    }
+    let mut app = app::App::new(gpu, seed, settings, mode);
     if let Some(p) = arg("--pos") {
         let v: Vec<f32> = p.split(',').filter_map(|s| s.trim().parse().ok()).collect();
         if v.len() == 3 {
-            app.camera.pos = glam::Vec3::new(v[0], v[1], v[2]);
+            app.players[0].pos = glam::Vec3::new(v[0], v[1], v[2]);
+            app.players[0].flying = true;
+            app.players[0].mode = player::GameMode::Creative;
         }
+    }
+    if let Some(id) = arg("--give").and_then(|s| s.parse::<u16>().ok()) {
+        app.players[0].inventory.slots[0] = player::items::ItemStack::new(id, 32);
     }
     if let Some(p) = arg("--look") {
         let v: Vec<f32> = p.split(',').filter_map(|s| s.trim().parse().ok()).collect();
         if v.len() == 2 {
-            app.camera.yaw = v[0].to_radians();
-            app.camera.pitch = v[1].to_radians();
+            app.players[0].yaw = v[0].to_radians();
+            app.players[0].pitch = v[1].to_radians();
         }
     }
     if let Some(t) = arg("--time").and_then(|s| s.parse::<f64>().ok()) {
         app.daytime.time = t * daytime::DAY_LENGTH_SECS;
-    }
-    if let Some(rd) = arg("--rd").and_then(|s| s.parse::<i32>().ok()) {
-        app.render_distance = rd.clamp(2, 32);
     }
     if args.iter().any(|a| a == "--find-biomes") {
         let g = world::gen::Generator::new(seed);
