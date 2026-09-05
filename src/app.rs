@@ -1,7 +1,9 @@
 //! Application: players, simulation ticks, chunk streaming, per-frame update and rendering.
 
+use crate::audio::{material_sounds, Audio, Sound};
 use crate::daytime::DayCycle;
 use crate::entity::{Arrow, ItemDrop, PrimedTnt};
+use crate::mobs::{spawn as mobspawn, Mob, MobCtx, MobEvent, MobKind};
 use crate::input::Input;
 use crate::player::interact::{self, Ctx, Interaction};
 use crate::player::{GameMode, OpenUi, Player, PlayerEvent, PlayerInput};
@@ -67,6 +69,9 @@ pub struct App {
     pub world_name: String,
     pub flat: bool,
     pub autosave_timer: f32,
+    pub mobs: Vec<Mob>,
+    pub spawners: HashSet<(i32, i32, i32)>,
+    pub audio: Option<Audio>,
 }
 
 /// Find a land spawn near the origin.
@@ -100,6 +105,7 @@ impl App {
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(1).max(2);
         let pool = WorkerPool::new(world.clone(), generator.clone(), None, threads);
         let spawn = find_spawn(&generator);
+        let settings_volume = settings.volume;
         let mut p1 = Player::new(0, "Player 1", spawn, mode);
         p1.spawn = spawn;
         App {
@@ -141,6 +147,21 @@ impl App {
             world_name: String::new(),
             flat: false,
             autosave_timer: 0.0,
+            mobs: Vec::new(),
+            spawners: HashSet::new(),
+            audio: Audio::new(settings_volume),
+        }
+    }
+
+    pub fn sound(&mut self, s: Sound, gain: f32, pitch: f32) {
+        if let Some(a) = self.audio.as_mut() {
+            a.play(s, gain, pitch);
+        }
+    }
+
+    pub fn sound_at(&mut self, s: Sound, pos: Vec3, gain: f32, pitch: f32) {
+        if let Some(a) = self.audio.as_mut() {
+            a.play_at(s, pos, gain, pitch);
         }
     }
 
@@ -213,6 +234,17 @@ impl App {
         if self.input.just(KeyCode::F3) {
             self.show_debug = !self.show_debug;
         }
+        if let Some(a) = self.audio.as_mut() {
+            let p = &self.players[0];
+            a.begin_frame(p.eye(), p.right());
+            let night = if self.daytime.is_night() { 1.0 } else { 0.0 };
+            let alt = ((p.pos.y - 70.0) / 60.0).clamp(0.0, 1.0);
+            let under = if p.head_in_water { 0.2 } else { 1.0 };
+            a.set_ambient((0.18 + 0.35 * alt) * under, 0.08 + 0.12 * night, if night > 0.5 { 82.0 } else { 110.0 });
+            if a.volume != self.settings.volume {
+                a.set_volume(self.settings.volume);
+            }
+        }
         // --- container screens (player 1: mouse) ---
         {
             let ui_open = self.players[0].ui != OpenUi::None && self.players[0].ui != OpenUi::Dead;
@@ -262,11 +294,73 @@ impl App {
             }
             let events = self.players[i].update_physics(&self.world, &pin, dt, sens);
             let survival = self.players[i].tick_survival(dt);
+            let ppos = self.players[i].pos;
             for ev in events.iter().chain(survival.iter()) {
-                if let PlayerEvent::Landed(d) = ev {
-                    let dmg = (d - 3.0).floor();
-                    if dmg > 0.0 {
-                        self.players[i].damage(dmg);
+                match ev {
+                    PlayerEvent::Landed(d) => {
+                        let dmg = (d - 3.0).floor();
+                        if dmg > 0.0 {
+                            self.players[i].damage(dmg);
+                            self.sound_at(Sound::Fall, ppos, 1.0, 1.0);
+                            self.sound_at(Sound::Hurt, ppos, 1.0, 1.0);
+                        }
+                    }
+                    PlayerEvent::Step => {
+                        let below = self.world.get_block(ppos.x.floor() as i32, (ppos.y - 0.1).floor() as i32, ppos.z.floor() as i32);
+                        if below != crate::world::block::Block::Air {
+                            let (_, _, step) = material_sounds(below);
+                            let pitch = 0.9 + self.rng.f32() * 0.2;
+                            self.sound_at(step, ppos, 0.5, pitch);
+                        }
+                    }
+                    PlayerEvent::Hurt => self.sound_at(Sound::Hurt, ppos, 1.0, 1.0),
+                    PlayerEvent::EnteredWater => self.sound_at(Sound::Splash, ppos, 0.8, 1.0),
+                    _ => {}
+                }
+            }
+            if self.players[i].dead && self.players[i].ui == OpenUi::Dead && self.players[i].hurt_timer > 0.45 {
+                self.sound_at(Sound::Death, ppos, 1.0, 1.0);
+            }
+            // melee attack on mobs (checked before block interaction)
+            let mut pin = pin;
+            if pin.attack_pressed && !self.players[i].dead && self.players[i].ui == OpenUi::None {
+                let eye = self.players[i].eye();
+                let dir = self.players[i].look_dir();
+                let reach = self.players[i].reach();
+                let mut best: Option<(usize, f32)> = None;
+                for (mi, m) in self.mobs.iter().enumerate() {
+                    if m.dead {
+                        continue;
+                    }
+                    if let Some(t) = m.ray_hit(eye, dir, reach) {
+                        if best.map(|b| t < b.1).unwrap_or(true) {
+                            best = Some((mi, t));
+                        }
+                    }
+                }
+                if let Some((mi, t)) = best {
+                    let mut cache = crate::world::ChunkCache::new(&self.world);
+                    let blocked = crate::player::raycast::raycast(&mut cache, eye, dir, reach, false).map(|h| h.dist < t).unwrap_or(false);
+                    if !blocked {
+                        let dmg = self.players[i].inventory.held().attack_damage();
+                        let died = self.mobs[mi].damage(dmg, Some(eye));
+                        let mpos = self.mobs[mi].position();
+                        let kind = self.mobs[mi].kind;
+                        self.sound_at(mob_sound(kind), mpos, 0.8, 1.3);
+                        if died {
+                            let drops = self.mobs[mi].drops(&mut self.rng);
+                            for d in drops {
+                                crate::entity::spawn_drop(&mut self.drops, mpos + Vec3::new(0.0, 0.5, 0.0), d, &mut self.rng);
+                            }
+                        }
+                        if self.players[i].inventory.held().tool_info().is_some() {
+                            self.players[i].inventory.damage_held(1);
+                        }
+                        self.players[i].swing = 0.0;
+                        self.players[i].exhaustion += 0.1;
+                        pin.attack = false;
+                        pin.attack_pressed = false;
+                        self.players[i].breaking = None;
                     }
                 }
             }
@@ -312,6 +406,27 @@ impl App {
                     _ => {}
                 }
             }
+            for a in &acts {
+                let (s, pos, gain, pitch) = match a {
+                    Interaction::Broke { pos, block } => (material_sounds(*block).0, *pos, 1.0, 1.0),
+                    Interaction::Hit { pos, block } => (material_sounds(*block).2, *pos, 0.6, 0.8),
+                    Interaction::Placed { pos, block } => (material_sounds(*block).1, *pos, 1.0, 1.0),
+                    Interaction::Toggled { pos, block } => (if *block == crate::world::block::Block::Door { Sound::Door } else { Sound::Lever }, *pos, 1.0, 1.0),
+                    Interaction::OpenUi(OpenUi::Chest(p)) => (Sound::ChestOpen, *p, 1.0, 1.0),
+                    Interaction::Ate => {
+                        self.sound(Sound::Eat, 1.0, 1.0);
+                        continue;
+                    }
+                    Interaction::ShootArrow { .. } => {
+                        self.sound(Sound::Bow, 1.0, 1.0);
+                        continue;
+                    }
+                    Interaction::Explode { pos } => (Sound::Fuse, *pos, 1.0, 1.0),
+                    _ => continue,
+                };
+                let p = Vec3::new(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
+                self.sound_at(s, p, gain, pitch);
+            }
             interactions.extend(acts);
             if pin.inventory && self.players[i].ui == OpenUi::None {
                 self.players[i].ui = OpenUi::Inventory;
@@ -332,6 +447,7 @@ impl App {
         for d in self.drops.iter_mut() {
             d.update(&self.world, dt);
         }
+        let mut picked: Option<Vec3> = None;
         for i in 0..self.drops.len() {
             if self.drops[i].pickup_delay > 0.0 {
                 continue;
@@ -343,6 +459,9 @@ impl App {
                 }
                 if dp.distance(p.pos + Vec3::new(0.0, 0.8, 0.0)) < 1.6 {
                     let rem = p.inventory.add(self.drops[i].stack);
+                    if rem.count != self.drops[i].stack.count {
+                        picked = Some(dp);
+                    }
                     self.drops[i].stack = rem;
                     if rem.is_empty() {
                         break;
@@ -350,9 +469,65 @@ impl App {
                 }
             }
         }
+        if let Some(p) = picked {
+            let pitch = 0.9 + self.rng.f32() * 0.3;
+            self.sound_at(Sound::PickUp, p, 0.7, pitch);
+        }
         self.drops.retain(|d| !d.stack.is_empty() && d.age < crate::entity::DROP_LIFETIME);
-        for a in self.arrows.iter_mut() {
-            a.update(&self.world, dt);
+        self.update_mobs(dt);
+        // arrows: move and hit mobs / players
+        let mut arrow_hits: Vec<(usize, Vec3)> = Vec::new();
+        for (ai, a) in self.arrows.iter_mut().enumerate() {
+            let was_stuck = a.stuck;
+            let hit_block = a.update(&self.world, dt);
+            if hit_block && !was_stuck {
+                arrow_hits.push((ai, a.position()));
+            }
+        }
+        for (_, p) in &arrow_hits {
+            self.sound_at(Sound::ArrowHit, *p, 0.8, 1.0);
+        }
+        let mut remove_arrows = Vec::new();
+        for ai in 0..self.arrows.len() {
+            let a = &self.arrows[ai];
+            if a.stuck || a.age < 0.05 {
+                continue;
+            }
+            let p = a.position();
+            let dmg = a.damage;
+            if a.owner == 0 {
+                for m in self.mobs.iter_mut() {
+                    if !m.dead && m.aabb().intersects(&crate::player::physics::Aabb::from_center(p - Vec3::new(0.0, 0.1, 0.0), 0.15, 0.2)) {
+                        let from = p - a.velocity().normalize_or_zero();
+                        let died = m.damage(dmg, Some(from));
+                        let mpos = m.position();
+                        let kind = m.kind;
+                        if died {
+                            let drops = m.drops(&mut self.rng);
+                            for d in drops {
+                                crate::entity::spawn_drop(&mut self.drops, mpos + Vec3::new(0.0, 0.5, 0.0), d, &mut self.rng);
+                            }
+                        }
+                        remove_arrows.push(ai);
+                        self.sound_at(mob_sound(kind), mpos, 0.8, 1.3);
+                        break;
+                    }
+                }
+            } else {
+                for pl in self.players.iter_mut() {
+                    if !pl.dead && pl.aabb().intersects(&crate::player::physics::Aabb::from_center(p - Vec3::new(0.0, 0.1, 0.0), 0.15, 0.2)) {
+                        pl.damage(dmg);
+                        pl.vel += a.velocity().normalize_or_zero() * 3.0;
+                        remove_arrows.push(ai);
+                        break;
+                    }
+                }
+            }
+        }
+        remove_arrows.sort_unstable();
+        remove_arrows.dedup();
+        for ai in remove_arrows.into_iter().rev() {
+            self.arrows.remove(ai);
         }
         self.arrows.retain(|a| a.age < 60.0 && a.position().y > -10.0);
         let mut explosions = Vec::new();
@@ -379,6 +554,80 @@ impl App {
             self.random_ticks();
         }
         self.tick_furnaces();
+        let players: Vec<Vec3> = self.players.iter().filter(|p| !p.dead).map(|p| p.pos).collect();
+        if self.ticks % 20 == 0 {
+            let sun = self.daytime.sun_level();
+            let day = !self.daytime.is_night();
+            mobspawn::natural_spawn(&mut self.mobs, &self.world, &players, &mut self.rng, sun, day);
+        }
+        if self.ticks % 100 == 0 {
+            mobspawn::despawn(&mut self.mobs, &self.world, &players);
+        }
+        let sun = self.daytime.sun_level();
+        let list: Vec<(i32, i32, i32)> = self.spawners.iter().copied().collect();
+        for p in list {
+            if !mobspawn::tick_spawner(&self.world, p, &mut self.mobs, &players, &mut self.rng, sun) {
+                self.spawners.remove(&p);
+            }
+        }
+    }
+
+    fn update_mobs(&mut self, dt: f32) {
+        let players: Vec<(Vec3, bool)> = self.players.iter().map(|p| (p.pos, p.dead)).collect();
+        let sun = self.daytime.sun_level();
+        let mut events = Vec::new();
+        for m in self.mobs.iter_mut() {
+            let p = m.position();
+            if !self.world.is_loaded(p.x.floor() as i32, p.z.floor() as i32) {
+                continue;
+            }
+            let mut ctx = MobCtx { world: &self.world, players: &players, rng: &mut self.rng, sun_level: sun };
+            events.extend(m.update(&mut ctx, dt));
+        }
+        for e in events {
+            match e {
+                MobEvent::AttackPlayer { player, damage, from } => {
+                    let mut snd = None;
+                    if let Some(p) = self.players.get_mut(player) {
+                        if p.damage(damage) {
+                            snd = Some((Sound::Death, p.pos));
+                        } else {
+                            let push = (p.pos - from).normalize_or_zero();
+                            p.vel += Vec3::new(push.x, 0.0, push.z) * 5.0 + Vec3::new(0.0, 3.5, 0.0);
+                            snd = Some((Sound::Hurt, p.pos));
+                        }
+                    }
+                    if let Some((s, pos)) = snd {
+                        self.sound_at(s, pos, 1.0, 1.0);
+                    }
+                }
+                MobEvent::ShootArrow { origin, dir } => {
+                    self.arrows.push(Arrow::new(origin, dir * 22.0, 3.0, 1));
+                    self.sound_at(Sound::Bow, origin, 0.8, 1.0);
+                }
+                MobEvent::Explode { pos, power } => {
+                    self.explode(pos, power);
+                    self.sound_at(Sound::Explode, pos, 1.0, 1.0);
+                }
+                MobEvent::Died { pos, drops, kind } => {
+                    for d in drops {
+                        crate::entity::spawn_drop(&mut self.drops, pos + Vec3::new(0.0, 0.5, 0.0), d, &mut self.rng);
+                    }
+                    self.sound_at(mob_sound(kind), pos, 0.9, 0.8);
+                }
+                MobEvent::Hurt { kind, pos } => self.sound_at(mob_sound(kind), pos, 0.6, 1.2),
+                MobEvent::Ambient { kind, pos } => {
+                    let pitch = 0.95 + self.rng.f32() * 0.1;
+                    self.sound_at(mob_sound(kind), pos, 0.7, pitch);
+                }
+                MobEvent::FuseStart { pos } => self.sound_at(Sound::Fuse, pos, 1.0, 1.0),
+                MobEvent::LayEgg { pos } => {
+                    crate::entity::spawn_drop(&mut self.drops, pos, crate::player::items::ItemStack::item(crate::player::items::Item::Egg, 1), &mut self.rng);
+                    self.sound_at(Sound::Egg, pos, 0.6, 1.0);
+                }
+            }
+        }
+        self.mobs.retain(|m| !(m.dead && m.death_timer > 1.2));
     }
 
     /// Advance every active furnace and keep its block's lit state in sync.
@@ -597,6 +846,11 @@ impl App {
                     if !near {
                         continue;
                     }
+                    for (k, be) in chunk.block_entities.iter() {
+                        if let BlockEntity::Spawner { .. } = be {
+                            self.spawners.insert((chunk.cx * 16 + k.0 as i32, k.1 as i32, chunk.cz * 16 + k.2 as i32));
+                        }
+                    }
                     self.world.insert_chunk(chunk);
                 }
                 JobResult::Meshed { cx, cz, sy, version, mesh } => {
@@ -631,7 +885,7 @@ impl App {
             format!("Chunk: {} {}  facing {}  yaw {:.1} pitch {:.1}", bx >> 4, bz >> 4, facing, p.yaw.to_degrees(), p.pitch.to_degrees()),
             format!("Biome: {}  light sky {} block {}", biome, sky, blk),
             format!("Chunks: {} loaded, {} sub-meshes drawn, {} quads", self.world.chunk_count(), self.chunk_renderer.stats_drawn, self.chunk_renderer.stats_quads),
-            format!("Pending: gen {} mesh {}  workers {}  drops {}  arrows {}", self.pending_gen.len(), self.pending_mesh.len(), self.threads, self.drops.len(), self.arrows.len()),
+            format!("Pending: gen {} mesh {}  workers {}  drops {}  arrows {}  mobs {}", self.pending_gen.len(), self.pending_mesh.len(), self.threads, self.drops.len(), self.arrows.len(), self.mobs.len()),
             format!("Time: {} day {}  sun {:.2}  tick {}  fluids {}", self.daytime.clock(), self.daytime.day_number(), self.daytime.sun_level(), self.ticks, self.fluids.pending()),
             format!("Health {:.1} hunger {:.1} sat {:.1}  mode {:?}{}", p.health, p.hunger, p.saturation, p.mode, if p.flying { " flying" } else { "" }),
             format!("Render distance {}  fov {:.0}  seed {}", self.settings.render_distance, self.settings.fov, self.world.seed),
@@ -694,6 +948,13 @@ impl App {
             let p = d.position();
             let l = self.world.light_at(p.x.floor() as i32, (p.y + 0.2).floor() as i32, p.z.floor() as i32);
             overlay::drop_quads(p, &d.stack, d.age, l, &mut ent);
+        }
+        for m in &self.mobs {
+            let p = m.position();
+            let l = self.world.light_at(p.x.floor() as i32, (p.y + 0.5).floor() as i32, p.z.floor() as i32);
+            if p.distance(camera.pos) < 64.0 {
+                crate::mobs::models::mob_quads(m, l, &mut ent);
+            }
         }
         for a in &self.arrows {
             let p = a.position();
@@ -826,5 +1087,18 @@ impl App {
             self.daytime.clock(),
             p.inventory.held().name()
         );
+    }
+}
+
+/// Voice for a mob kind.
+pub fn mob_sound(kind: MobKind) -> Sound {
+    match kind {
+        MobKind::Pig => Sound::Pig,
+        MobKind::Cow => Sound::Cow,
+        MobKind::Sheep => Sound::Sheep,
+        MobKind::Chicken => Sound::Chicken,
+        MobKind::Zombie => Sound::Zombie,
+        MobKind::Skeleton => Sound::Skeleton,
+        MobKind::Creeper => Sound::Fuse,
     }
 }

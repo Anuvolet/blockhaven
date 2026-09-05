@@ -11,10 +11,10 @@ release build with zero warnings, a smoke run, and a commit.
 - [x] 5. Lighting (sun + block light, AO) + day/night cycle
 - [x] 6. Inventory, items, crafting, furnace, chests, item drops
 - [x] 7. Health / hunger / damage / respawn
-- [ ] 8. Mobs (pig, cow, sheep, chicken, zombie, skeleton, creeper)
+- [x] 8. Mobs (pig, cow, sheep, chicken, zombie, skeleton, creeper)
 - [ ] 9. Redstone (dust, torch, lever, button, plate, lamp, pistons, doors, TNT)
 - [ ] 10. Structures (villages, dungeons, ruins)
-- [ ] 11. Audio (procedural synth via rodio)
+- [x] 11. Audio (procedural synth via rodio)
 - [ ] 12. Save / load (region files, autosave)
 - [ ] 13. Menus, settings, HUD, F3 debug overlay, procedural font
 - [ ] 14. Split-screen (F2, gamepad / keyboard fallback)

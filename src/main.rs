@@ -2,9 +2,11 @@
 #![allow(dead_code)]
 
 mod app;
+mod audio;
 mod daytime;
 mod entity;
 mod input;
+mod mobs;
 mod player;
 mod render;
 mod save;
@@ -55,6 +57,28 @@ fn main() {
         app.players[0].inventory.slots[12] = player::items::ItemStack::block(world::block::Block::OakLog, 20);
         app.players[0].inventory.craft[0] = player::items::ItemStack::block(world::block::Block::OakPlanks, 2);
         app.players[0].inventory.craft[3] = player::items::ItemStack::block(world::block::Block::OakPlanks, 2);
+    }
+    if let Some(list) = arg("--mobs") {
+        // spawn a line-up of mobs in front of the player for screenshots: "pig,cow,zombie"
+        let base = app.players[0].pos;
+        let fwd = app.players[0].forward_flat();
+        let right = app.players[0].right();
+        for (i, name) in list.split(',').enumerate() {
+            let kind = match name.trim() {
+                "pig" => mobs::MobKind::Pig,
+                "cow" => mobs::MobKind::Cow,
+                "sheep" => mobs::MobKind::Sheep,
+                "chicken" => mobs::MobKind::Chicken,
+                "zombie" => mobs::MobKind::Zombie,
+                "skeleton" => mobs::MobKind::Skeleton,
+                _ => mobs::MobKind::Creeper,
+            };
+            let pos = base + fwd * 4.0 + right * (i as f32 - 3.0) * 1.6;
+            let mut m = mobs::Mob::new(kind, pos + glam::Vec3::new(0.0, 0.5, 0.0), &mut app.rng);
+            m.yaw = app.players[0].yaw + std::f32::consts::PI;
+            m.head_yaw = m.yaw;
+            app.mobs.push(m);
+        }
     }
     if args.iter().any(|a| a == "--debug") {
         app.show_debug = true;

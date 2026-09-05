@@ -502,11 +502,12 @@ fn custom_shape(em: &mut Emitter, pad: &Pad, x: i32, y: i32, z: i32, b: Block, m
         Shape::Torch => {
             let t = tiles[0];
             // meta: 0 floor, 1 = attached to -X wall (torch leans from +X side)... we simply offset.
+            // lean toward the wall the torch is attached to
             let (ox, oz) = match meta & 7 {
-                1 => (-0.3, 0.0),
-                2 => (0.3, 0.0),
-                3 => (0.0, -0.3),
-                4 => (0.0, 0.3),
+                1 => (0.3, 0.0),
+                2 => (-0.3, 0.0),
+                3 => (0.0, 0.3),
+                4 => (0.0, -0.3),
                 _ => (0.0, 0.0),
             };
             let oy = if meta & 7 != 0 { 0.2 } else { 0.0 };
