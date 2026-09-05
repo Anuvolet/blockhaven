@@ -484,13 +484,13 @@ mod tests {
         // remove the torch through the world API
         let old = world.set_raw(8, 4, 8, 0).unwrap();
         on_block_changed(&world, 8, 4, 8, old, 0);
-        assert_eq!(world.block_light(8, 4, 8), 0);
-        assert_eq!(world.block_light(10, 4, 8), 0);
+        assert_eq!(world.light_at(8, 4, 8).1, 0);
+        assert_eq!(world.light_at(10, 4, 8).1, 0);
         // place a glowstone: 15 at the source, decays by 1 per block
         let old = world.set_raw(8, 4, 8, voxel(Block::Glowstone, 0)).unwrap();
         on_block_changed(&world, 8, 4, 8, old, voxel(Block::Glowstone, 0));
-        assert_eq!(world.block_light(8, 5, 8), 14);
-        assert_eq!(world.block_light(8, 4, 12), 11);
+        assert_eq!(world.light_at(8, 5, 8).1, 14);
+        assert_eq!(world.light_at(8, 4, 12).1, 11);
     }
 
     #[test]
@@ -532,9 +532,9 @@ mod tests {
         init_chunk_light(&mut b);
         world.insert_chunk(a);
         world.insert_chunk(b);
-        assert_eq!(world.block_light(16, 4, 8), 0);
+        assert_eq!(world.light_at(16, 4, 8).1, 0);
         propagate_seams(&world, 0, 0);
-        assert_eq!(world.block_light(16, 4, 8), 13);
-        assert_eq!(world.block_light(18, 4, 8), 11);
+        assert_eq!(world.light_at(16, 4, 8).1, 13);
+        assert_eq!(world.light_at(18, 4, 8).1, 11);
     }
 }

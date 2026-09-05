@@ -624,13 +624,13 @@ mod tests {
         let acts = update(&mut ctx, &mut player, &input, 0.05);
         assert!(acts.iter().any(|a| matches!(a, Interaction::Placed { block: Block::Torch, .. })), "{acts:?}");
         assert_eq!(world.get_block(8, 11, 7), Block::Torch);
-        assert_eq!(world.block_light(8, 11, 7), 14);
+        assert_eq!(world.light_at(8, 11, 7).1, 14);
         let mut ctx = Ctx { world: &world, fluids: &mut fluids, drops: &mut drops, rng: &mut rng, player_boxes: &boxes };
         destroy_block(&mut ctx, (8, 11, 6), true);
         let popped = cascade_support(&mut ctx, (8, 11, 6));
         assert!(popped.contains(&(8, 11, 7)));
         assert_eq!(world.get_block(8, 11, 7), Block::Air);
-        assert_eq!(world.block_light(8, 11, 7), 0);
+        assert_eq!(world.light_at(8, 11, 7).1, 0);
     }
 
     #[test]
