@@ -7,5 +7,6 @@ pub mod overlay;
 pub mod screenshot;
 pub mod sky;
 pub mod texgen;
+pub mod texgen_blocks;
 pub mod texgen_extra;
 pub mod ui2d;
