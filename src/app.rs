@@ -7,6 +7,7 @@ use crate::mobs::{spawn as mobspawn, Mob, MobCtx, MobEvent, MobKind};
 use crate::input::Input;
 use crate::player::interact::{self, Ctx, Interaction};
 use crate::player::{GameMode, OpenUi, Player, PlayerEvent, PlayerInput};
+use crate::redstone::{Redstone, RsEvent};
 use crate::render::atlas;
 use crate::render::camera::Frustum;
 use crate::render::chunk_renderer::{ChunkRenderer, DynamicBuffer, Globals};
@@ -72,6 +73,7 @@ pub struct App {
     pub mobs: Vec<Mob>,
     pub spawners: HashSet<(i32, i32, i32)>,
     pub audio: Option<Audio>,
+    pub redstone: Redstone,
 }
 
 /// Find a land spawn near the origin.
@@ -150,6 +152,7 @@ impl App {
             mobs: Vec::new(),
             spawners: HashSet::new(),
             audio: Audio::new(settings_volume),
+            redstone: Redstone::new(),
         }
     }
 
@@ -407,6 +410,17 @@ impl App {
                 }
             }
             for a in &acts {
+                match a {
+                    Interaction::Broke { pos, .. } | Interaction::Placed { pos, .. } => self.redstone.mark(*pos),
+                    Interaction::Toggled { pos, block } => {
+                        if *block == crate::world::block::Block::Button {
+                            self.redstone.press_button(*pos);
+                        } else {
+                            self.redstone.mark(*pos);
+                        }
+                    }
+                    _ => {}
+                }
                 let (s, pos, gain, pitch) = match a {
                     Interaction::Broke { pos, block } => (material_sounds(*block).0, *pos, 1.0, 1.0),
                     Interaction::Hit { pos, block } => (material_sounds(*block).2, *pos, 0.6, 0.8),
@@ -554,6 +568,7 @@ impl App {
             self.random_ticks();
         }
         self.tick_furnaces();
+        self.tick_redstone();
         let players: Vec<Vec3> = self.players.iter().filter(|p| !p.dead).map(|p| p.pos).collect();
         if self.ticks % 20 == 0 {
             let sun = self.daytime.sun_level();
@@ -628,6 +643,54 @@ impl App {
             }
         }
         self.mobs.retain(|m| !(m.dead && m.death_timer > 1.2));
+    }
+
+    /// Pressure plates + redstone evaluation.
+    fn tick_redstone(&mut self) {
+        use crate::world::block::{vox_block, vox_meta, voxel, Block};
+        // pressure plates: anything standing on them
+        let mut feet: Vec<Vec3> = self.players.iter().filter(|p| !p.dead).map(|p| p.pos).collect();
+        feet.extend(self.mobs.iter().filter(|m| !m.dead).map(|m| m.position()));
+        feet.extend(self.drops.iter().map(|d| d.position()));
+        let mut now_pressed: HashSet<(i32, i32, i32)> = HashSet::new();
+        for f in &feet {
+            for dy in [0.0f32, -0.05] {
+                let p = (f.x.floor() as i32, (f.y + dy).floor() as i32, f.z.floor() as i32);
+                if self.world.get_block(p.0, p.1, p.2) == Block::PressurePlate {
+                    now_pressed.insert(p);
+                }
+            }
+        }
+        for p in now_pressed.iter() {
+            if !self.redstone.pressed_plates.contains(p) {
+                let v = self.world.get(p.0, p.1, p.2);
+                self.world.set_block(p.0, p.1, p.2, voxel(Block::PressurePlate, vox_meta(v) | 1));
+                self.redstone.mark(*p);
+                self.sound_at(Sound::Click, Vec3::new(p.0 as f32 + 0.5, p.1 as f32, p.2 as f32 + 0.5), 0.6, 1.0);
+            }
+        }
+        let released: Vec<(i32, i32, i32)> = self.redstone.pressed_plates.iter().filter(|p| !now_pressed.contains(p)).copied().collect();
+        for p in released {
+            let v = self.world.get(p.0, p.1, p.2);
+            if vox_block(v) == Block::PressurePlate {
+                self.world.set_block(p.0, p.1, p.2, voxel(Block::PressurePlate, vox_meta(v) & !1));
+            }
+            self.redstone.mark(p);
+        }
+        self.redstone.pressed_plates = now_pressed;
+        let events = self.redstone.step(&self.world);
+        for e in events {
+            match e {
+                RsEvent::PrimeTnt(p) => {
+                    let c = Vec3::new(p.0 as f32 + 0.5, p.1 as f32, p.2 as f32 + 0.5);
+                    self.tnt.push(PrimedTnt::new(c));
+                    self.sound_at(Sound::Fuse, c, 1.0, 1.0);
+                }
+                RsEvent::Piston(p) => self.sound_at(Sound::Piston, Vec3::new(p.0 as f32 + 0.5, p.1 as f32 + 0.5, p.2 as f32 + 0.5), 0.8, 1.0),
+                RsEvent::Door(p) => self.sound_at(Sound::Door, Vec3::new(p.0 as f32 + 0.5, p.1 as f32 + 0.5, p.2 as f32 + 0.5), 0.8, 1.0),
+                RsEvent::Click(p) => self.sound_at(Sound::Lever, Vec3::new(p.0 as f32 + 0.5, p.1 as f32 + 0.5, p.2 as f32 + 0.5), 0.5, 0.8),
+            }
+        }
     }
 
     /// Advance every active furnace and keep its block's lit state in sync.
@@ -716,6 +779,7 @@ impl App {
                         let drop = self.rng.chance(0.3);
                         let mut ctx = Ctx { world: &self.world, fluids: &mut self.fluids, drops: &mut self.drops, rng: &mut self.rng, player_boxes: &boxes };
                         interact::destroy_block(&mut ctx, (x, y, z), drop);
+                        self.redstone.mark((x, y, z));
                     }
                 }
             }
@@ -886,7 +950,7 @@ impl App {
             format!("Biome: {}  light sky {} block {}", biome, sky, blk),
             format!("Chunks: {} loaded, {} sub-meshes drawn, {} quads", self.world.chunk_count(), self.chunk_renderer.stats_drawn, self.chunk_renderer.stats_quads),
             format!("Pending: gen {} mesh {}  workers {}  drops {}  arrows {}  mobs {}", self.pending_gen.len(), self.pending_mesh.len(), self.threads, self.drops.len(), self.arrows.len(), self.mobs.len()),
-            format!("Time: {} day {}  sun {:.2}  tick {}  fluids {}", self.daytime.clock(), self.daytime.day_number(), self.daytime.sun_level(), self.ticks, self.fluids.pending()),
+            format!("Time: {} day {}  sun {:.2}  tick {}  fluids {}  redstone {}", self.daytime.clock(), self.daytime.day_number(), self.daytime.sun_level(), self.ticks, self.fluids.pending(), self.redstone.pending()),
             format!("Health {:.1} hunger {:.1} sat {:.1}  mode {:?}{}", p.health, p.hunger, p.saturation, p.mode, if p.flying { " flying" } else { "" }),
             format!("Render distance {}  fov {:.0}  seed {}", self.settings.render_distance, self.settings.fov, self.world.seed),
         ]

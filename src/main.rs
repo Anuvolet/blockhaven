@@ -8,6 +8,7 @@ mod entity;
 mod input;
 mod mobs;
 mod player;
+mod redstone;
 mod render;
 mod save;
 mod settings;
