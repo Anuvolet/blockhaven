@@ -15,9 +15,9 @@ release build with zero warnings, a smoke run, and a commit.
 - [x] 9. Redstone (dust, torch, lever, button, plate, lamp, pistons, doors, TNT)
 - [x] 10. Structures (villages, dungeons, ruins)
 - [x] 11. Audio (procedural synth via rodio)
-- [ ] 12. Save / load (region files, autosave)
-- [ ] 13. Menus, settings, HUD, F3 debug overlay, procedural font
-- [ ] 14. Split-screen (F2, gamepad / keyboard fallback)
+- [x] 12. Save / load (region files, autosave)
+- [x] 13. Menus, settings, HUD, F3 debug overlay, procedural font
+- [x] 14. Split-screen (F2, gamepad / keyboard fallback)
 - [ ] 15. Optimization pass + polish
 
 ## Deferred

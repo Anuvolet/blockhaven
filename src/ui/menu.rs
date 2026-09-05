@@ -286,8 +286,11 @@ impl Menu {
         let h = b.height;
         if self.in_game {
             b.rect(0.0, 0.0, w, h, [0.0, 0.0, 0.0, 0.6]);
+        } else if self.screen == Screen::Main {
+            // the demo world shows through a light vignette
+            b.rect(0.0, 0.0, w, h, [0.0, 0.0, 0.0, 0.25]);
         } else {
-            // dirt background
+            // dirt background for sub-screens
             let n = 32.0;
             let mut y = 0.0;
             while y < h {

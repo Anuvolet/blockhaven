@@ -114,6 +114,10 @@ pub struct Player {
     pub fov_mult: f32,
     pub sleeping: bool,
     pub hotbar_changed_at: f32,
+    /// UI cursor in gui units (mouse for player 1, virtual for player 2).
+    pub cursor: (f32, f32),
+    /// Short on-screen message and its remaining time.
+    pub message: Option<(String, f32)>,
 }
 
 impl Player {
@@ -163,6 +167,8 @@ impl Player {
             fov_mult: 1.0,
             sleeping: false,
             hotbar_changed_at: -10.0,
+            cursor: (0.0, 0.0),
+            message: None,
         }
     }
 
@@ -482,6 +488,10 @@ impl Player {
             return true;
         }
         false
+    }
+
+    pub fn say(&mut self, text: &str) {
+        self.message = Some((text.to_string(), 3.0));
     }
 
     pub fn heal(&mut self, amount: f32) {

@@ -42,6 +42,10 @@ pub fn draw_hud(b: &mut UiBatch, player: &Player, debug: Option<&[String]>, show
         let x = x0 + i as f32 * 20.0;
         b.item(x + 2.0, y0 + 2.0, 16.0, &player.inventory.slots[i]);
     }
+    if let Some((msg, t)) = &player.message {
+        let a = (*t * 2.0).clamp(0.0, 1.0);
+        b.text_centered(w * 0.5, y0 - 46.0, 1.0, msg, [1.0, 1.0, 0.7, a]);
+    }
     // held item name
     let since = player.time - player.hotbar_changed_at;
     if since < 2.0 {
